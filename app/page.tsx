@@ -21,13 +21,7 @@ function nowTs() {
 }
 
 // ── Timer ────────────────────────────────────────────────────────
-function Timer({
-  startTime,
-  onEnd,
-}: {
-  startTime: number
-  onEnd: () => void
-}) {
+function Timer({ startTime, onEnd }: { startTime: number; onEnd: () => void }) {
   const [remaining, setRemaining] = useState(SESSION_DURATION)
 
   useEffect(() => {
@@ -42,17 +36,37 @@ function Timer({
     return () => clearInterval(id)
   }, [startTime, onEnd])
 
-  const m = Math.floor(remaining / 60)
-  const s = Math.floor(remaining % 60)
-  const pct = (remaining / SESSION_DURATION) * 100
   const cls = remaining < 60 ? 'danger' : remaining < 180 ? 'warning' : ''
 
   return (
     <div className="timer">
       <span className="timer-label">剩餘</span>
       <span className={`timer-digits ${cls}`}>
-        {pad(m)}:{pad(s)}
+        {pad(Math.floor(remaining / 60))}:{pad(Math.floor(remaining % 60))}
       </span>
+    </div>
+  )
+}
+
+function TimerBar({ startTime }: { startTime: number }) {
+  const [pct, setPct] = useState(100)
+  const [cls, setCls] = useState('')
+
+  useEffect(() => {
+    const tick = () => {
+      const elapsed = (Date.now() - startTime) / 1000
+      const left = Math.max(0, SESSION_DURATION - elapsed)
+      setPct((left / SESSION_DURATION) * 100)
+      setCls(left < 60 ? 'danger' : left < 180 ? 'warning' : '')
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startTime])
+
+  return (
+    <div className="timer-bar-track">
+      <div className={`timer-bar-fill ${cls}`} style={{ width: `${pct}%` }} />
     </div>
   )
 }
@@ -93,8 +107,64 @@ function TypingIndicator() {
   )
 }
 
+// ── Participant ID screen ─────────────────────────────────────────
+function ParticipantScreen({ onStart }: { onStart: (id: string) => void }) {
+  const [value, setValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const handleSubmit = () => {
+    const id = value.trim()
+    if (!id) return
+    onStart(id)
+  }
+
+  return (
+    <div className="participant-screen">
+      <div className="participant-card">
+        <div className="participant-icon">👨‍👩‍👧</div>
+        <h1 className="participant-title">亞洲家長對話實驗</h1>
+        <p className="participant-desc">
+          你將與一個模擬台灣父母溝通風格的 AI 進行對話。<br />
+          每次 AI 回覆後，你可以選擇查看話語背後真正的情感。
+        </p>
+        <div className="participant-form">
+          <label className="participant-label" htmlFor="pid">
+            受試者編號
+          </label>
+          <input
+            ref={inputRef}
+            id="pid"
+            className="participant-input"
+            type="text"
+            placeholder="請輸入你的受試者編號"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoComplete="off"
+          />
+          <button
+            className="participant-btn"
+            onClick={handleSubmit}
+            disabled={!value.trim()}
+          >
+            開始對話
+          </button>
+        </div>
+        <p className="participant-note">
+          對話時間為 10 分鐘，結束後可下載對話記錄。
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ────────────────────────────────────────────────────
 export default function Page() {
+  const [participantId, setParticipantId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -106,12 +176,15 @@ export default function Page() {
 
   const handleEnd = useCallback(() => setSessionEnded(true), [])
 
-  // auto-scroll
+  const handleStart = (id: string) => {
+    startTime.current = Date.now()
+    setParticipantId(id)
+  }
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  // auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -135,7 +208,6 @@ export default function Page() {
     setLoading(true)
     setError(null)
 
-    // build history for API (only role + text)
     const history = messages.map((m) => ({
       role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
       text: m.text,
@@ -150,14 +222,16 @@ export default function Page() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '發生錯誤')
 
-      const assistantMsg: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        text: data.parent,
-        translation: data.translation,
-        ts: nowTs(),
-      }
-      setMessages((prev) => [...prev, assistantMsg])
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          text: data.parent,
+          translation: data.translation,
+          ts: nowTs(),
+        },
+      ])
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -174,35 +248,46 @@ export default function Page() {
 
   const downloadCSV = () => {
     const rows = [
-      ['timestamp', 'role', 'content', 'translation'],
-      ...messages.map((m) => [m.ts, m.role, m.text, m.translation ?? '']),
+      ['participant_id', 'timestamp', 'role', 'content', 'translation'],
+      ...messages.map((m) => [
+        participantId ?? '',
+        m.ts,
+        m.role,
+        m.text,
+        m.translation ?? '',
+      ]),
     ]
-    const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\n')
+    const csv = rows
+      .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))
+      .join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `chat-${Date.now()}.csv`
+    a.download = `${participantId}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
+  // ── Not started yet ───────────────────────────────────────────
+  if (!participantId) {
+    return <ParticipantScreen onStart={handleStart} />
+  }
+
+  // ── Chat ──────────────────────────────────────────────────────
   return (
     <div className="page">
-      {/* ── Header ── */}
       <header className="header">
         <div className="header-top">
           <div>
             <div className="header-title">👨‍👩‍👧 亞洲家長對話實驗</div>
-            <div className="header-subtitle">與模擬台灣父母的 AI 對話，理解話語背後的真實情感</div>
+            <div className="header-subtitle">受試者：{participantId}</div>
           </div>
           <Timer startTime={startTime.current} onEnd={handleEnd} />
         </div>
-        {/* Timer progress bar */}
         <TimerBar startTime={startTime.current} />
       </header>
 
-      {/* ── Chat area ── */}
       <div className="chat-area">
         {messages.length === 0 && !loading && (
           <div className="empty-state">
@@ -219,8 +304,7 @@ export default function Page() {
         {messages.map((msg) => (
           <div key={msg.id} className={`msg-row ${msg.role}`}>
             <div className="bubble-wrap">
-              {msg.role === 'assistant' && <div className="avatar">👨</div>}
-              {msg.role === 'user' && <div className="avatar">🧑</div>}
+              <div className="avatar">{msg.role === 'assistant' ? '👨' : '🧑'}</div>
               <div className="bubble">{msg.text}</div>
             </div>
             <div className="bubble-ts">{msg.ts}</div>
@@ -235,13 +319,12 @@ export default function Page() {
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Input / Session ended ── */}
       {sessionEnded ? (
         <div className="session-ended">
           <h2>⏰ 對話時間已結束</h2>
-          <p>感謝您參與本實驗</p>
+          <p>感謝您參與本實驗，請下載對話記錄交給研究人員。</p>
           <button className="download-btn" onClick={downloadCSV}>
-            📥 下載對話記錄 (CSV)
+            📥 下載對話記錄（{participantId}.csv）
           </button>
         </div>
       ) : (
@@ -270,33 +353,6 @@ export default function Page() {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-// separate tiny component to avoid re-rendering whole page every second
-function TimerBar({ startTime }: { startTime: number }) {
-  const [pct, setPct] = useState(100)
-  const [cls, setCls] = useState('')
-
-  useEffect(() => {
-    const tick = () => {
-      const elapsed = (Date.now() - startTime) / 1000
-      const left = Math.max(0, SESSION_DURATION - elapsed)
-      setPct((left / SESSION_DURATION) * 100)
-      setCls(left < 60 ? 'danger' : left < 180 ? 'warning' : '')
-    }
-    tick()
-    const id = setInterval(tick, 1000)
-    return () => clearInterval(id)
-  }, [startTime])
-
-  return (
-    <div className="timer-bar-track">
-      <div
-        className={`timer-bar-fill ${cls}`}
-        style={{ width: `${pct}%` }}
-      />
     </div>
   )
 }

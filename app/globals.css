@@ -378,6 +378,101 @@ html, body {
 }
 .download-btn:hover { opacity: 0.85; }
 
+/* ── Participant screen ── */
+.participant-screen {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background: var(--cream);
+}
+
+.participant-card {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2.5rem 2rem;
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.participant-icon { font-size: 2.8rem; margin-bottom: 0.75rem; }
+
+.participant-title {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+  letter-spacing: 0.03em;
+}
+
+.participant-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.65;
+  margin-bottom: 2rem;
+}
+
+.participant-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.participant-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.participant-input {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+.participant-input::placeholder { color: var(--text-muted); letter-spacing: 0; }
+.participant-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(196,99,26,0.1);
+}
+
+.participant-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  margin-top: 0.25rem;
+}
+.participant-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.participant-btn:active:not(:disabled) { transform: scale(0.98); }
+.participant-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.participant-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 /* ── Error toast ── */
 .error-bar {
   background: #fff0f0;
