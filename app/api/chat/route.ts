@@ -46,9 +46,9 @@ export async function POST(req: NextRequest) {
               description: '家長的回話，繁體中文，80字以內，只說對白',
             },
             analysis: {
-              type: 'string',
-              description: '親子溝通分析，繁體中文，80到100字，一個連貫段落',
-            },
+  type: 'string',
+  description: '父母的第一人稱內心獨白，說出剛才那句話背後真正的感受和擔憂，繁體中文，60到80字，口語化，不要說教',
+},
           },
           required: ['parent', 'analysis'],
           additionalProperties: false,
