@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { SESSION_DURATION } from '@/lib/prompts'
+import { SESSION_DURATION, TOPIC_MAP } from '@/lib/prompts'
 
 type Message = {
   id: string
@@ -106,11 +106,11 @@ function TranslationSection({
 }
 
 // ── Typing indicator ─────────────────────────────────────────────
-function TypingIndicator() {
+function TypingIndicator({ nickname }: { nickname: string }) {
   return (
     <div className="msg-row assistant">
       <div className="bubble-wrap">
-        <div className="avatar">👨</div>
+        <div className="avatar">{nickname}</div>
         <div className="typing-bubble">
           <span className="typing-dot" />
           <span className="typing-dot" />
@@ -121,39 +121,56 @@ function TypingIndicator() {
   )
 }
 
+// ── Context hint banner ──────────────────────────────────────────
+function ContextHint({ nickname }: { nickname: string }) {
+  return (
+    <div className="context-hint">
+      💡 每則 <strong>{nickname}</strong> 的訊息下方都有「查看脈絡補充」，點開可以看到他說這句話背後的心情
+    </div>
+  )
+}
+
 // ── Participant ID screen ─────────────────────────────────────────
 function ParticipantScreen({
   onStart,
   prefillId,
   prefillTopic,
 }: {
-  onStart: (id: string, topic: string) => void
+  onStart: (id: string, topic: string, nickname: string, opening: string) => void
   prefillId: string
   prefillTopic: string
 }) {
   const [id, setId] = useState(prefillId)
-  const [topic, setTopic] = useState(prefillTopic)
+  const [code, setCode] = useState(prefillTopic)
+  const [nickname, setNickname] = useState('')
+  const [codeError, setCodeError] = useState(false)
   const idRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    // If both are prefilled via URL, auto-start
-    if (prefillId && prefillTopic) {
-      onStart(prefillId, prefillTopic)
+    if (prefillId && prefillTopic && TOPIC_MAP[prefillTopic]) {
+      const entry = TOPIC_MAP[prefillTopic]
+      onStart(prefillId, entry.topic, '', entry.opening)
       return
     }
     idRef.current?.focus()
   }, [prefillId, prefillTopic, onStart])
 
   const handleSubmit = () => {
-    if (!id.trim() || !topic.trim()) return
-    onStart(id.trim(), topic.trim())
+    if (!id.trim() || !code.trim() || !nickname.trim()) return
+    const entry = TOPIC_MAP[code.trim().toUpperCase()]
+    if (!entry) {
+      setCodeError(true)
+      return
+    }
+    setCodeError(false)
+    onStart(id.trim(), entry.topic, nickname.trim(), entry.opening)
   }
 
   return (
     <div className="participant-screen">
       <div className="participant-card">
         <div className="participant-icon">👨‍👩‍👧</div>
-        <h1 className="participant-title">亞洲家長對話實驗</h1>
+        <h1 className="participant-title">親子對話實驗</h1>
         <p className="participant-desc">
           你將與一個模擬台灣父母的 AI 進行價值觀爭論。<br />
           每次 AI 回覆後，你可以選擇查看脈絡補充。
@@ -171,23 +188,44 @@ function ParticipantScreen({
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoComplete="off"
           />
-          <label className="participant-label" htmlFor="topic" style={{ marginTop: '0.5rem' }}>
-            爭論話題
+
+          <label className="participant-label" htmlFor="code" style={{ marginTop: '0.5rem' }}>
+            話題代碼
           </label>
           <input
-            id="topic"
+            id="code"
             className="participant-input"
             type="text"
-            placeholder="例如：花四千燙頭髮"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
+            placeholder="請輸入話題代碼（例如 T001）"
+            value={code}
+            onChange={(e) => { setCode(e.target.value); setCodeError(false) }}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoComplete="off"
           />
+          {codeError && (
+            <p style={{ color: 'red', fontSize: '0.8rem', margin: '0.25rem 0 0' }}>
+              話題代碼不正確，請確認後再試
+            </p>
+          )}
+
+          <label className="participant-label" htmlFor="nickname" style={{ marginTop: '0.5rem' }}>
+            父母在 LINE 的暱稱
+          </label>
+          <input
+            id="nickname"
+            className="participant-input"
+            type="text"
+            placeholder="例如：媽媽、老爸、阿母"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoComplete="off"
+          />
+
           <button
             className="participant-btn"
             onClick={handleSubmit}
-            disabled={!id.trim() || !topic.trim()}
+            disabled={!id.trim() || !code.trim() || !nickname.trim()}
           >
             開始對話
           </button>
@@ -208,6 +246,7 @@ function ChatApp() {
 
   const [participantId, setParticipantId] = useState<string | null>(null)
   const [topic, setTopic] = useState<string | null>(null)
+  const [nickname, setNickname] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -219,10 +258,18 @@ function ChatApp() {
 
   const handleEnd = useCallback(() => setSessionEnded(true), [])
 
-  const handleStart = useCallback((id: string, t: string) => {
+  const handleStart = useCallback((id: string, t: string, nick: string, opening: string) => {
     startTime.current = Date.now()
     setParticipantId(id)
     setTopic(t)
+    setNickname(nick)
+    setMessages([{
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      text: opening,
+      ts: nowTs(),
+      contextRevealed: false,
+    }])
   }, [])
 
   useEffect(() => {
@@ -236,7 +283,6 @@ function ChatApp() {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }, [input])
 
-  // mark context revealed for a message
   const handleContextReveal = (msgId: string) => {
     setMessages((prev) =>
       prev.map((m) => (m.id === msgId ? { ...m, contextRevealed: true } : m))
@@ -301,10 +347,11 @@ function ChatApp() {
 
   const downloadCSV = () => {
     const rows = [
-      ['participant_id', 'topic', 'timestamp', 'role', 'content', 'translation', 'context_revealed'],
+      ['participant_id', 'topic', 'nickname', 'timestamp', 'role', 'content', 'translation', 'context_revealed'],
       ...messages.map((m) => [
         participantId ?? '',
         topic ?? '',
+        nickname ?? '',
         m.ts,
         m.role,
         m.text,
@@ -324,7 +371,7 @@ function ChatApp() {
     URL.revokeObjectURL(url)
   }
 
-  if (!participantId || !topic) {
+  if (!participantId || !topic || !nickname) {
     return (
       <ParticipantScreen
         onStart={handleStart}
@@ -339,10 +386,10 @@ function ChatApp() {
       <header className="header">
         <div className="header-top">
           <div>
-            <div className="header-title">👨‍👩‍👧 亞洲家長對話實驗</div>
-            <div className="header-subtitle">
-              受試者：{participantId}　｜　話題：{topic}
-            </div>
+            {/* 改成暱稱當標題 */}
+            <div className="header-title">{nickname}</div>
+            {/* 只顯示受試者編號 */}
+            <div className="header-subtitle">受試者：{participantId}</div>
           </div>
           <Timer startTime={startTime.current} onEnd={handleEnd} />
         </div>
@@ -350,23 +397,15 @@ function ChatApp() {
       </header>
 
       <div className="chat-area">
-        {messages.length === 0 && !loading && (
-          <div className="empty-state">
-            <div>
-              <div className="empty-icon">💬</div>
-              <div className="empty-text">
-                話題：<strong>{topic}</strong><br /><br />
-                跟家長說說你的想法吧<br />
-                他一定有話要反駁
-              </div>
-            </div>
-          </div>
-        )}
+        {/* 脈絡補充說明 hint */}
+        <ContextHint nickname={nickname} />
 
         {messages.map((msg) => (
           <div key={msg.id} className={`msg-row ${msg.role}`}>
             <div className="bubble-wrap">
-              <div className="avatar">{msg.role === 'assistant' ? '👨' : '🧑'}</div>
+              <div className="avatar">
+                {msg.role === 'assistant' ? nickname : '🧑'}
+              </div>
               <div className="bubble">{msg.text}</div>
             </div>
             <div className="bubble-ts">{msg.ts}</div>
@@ -379,7 +418,7 @@ function ChatApp() {
           </div>
         ))}
 
-        {loading && <TypingIndicator />}
+        {loading && <TypingIndicator nickname={nickname} />}
         {error && <div className="error-bar">⚠️ {error}</div>}
         <div ref={bottomRef} />
       </div>
