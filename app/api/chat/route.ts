@@ -1,24 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenAI } from '@google/genai'
-import { buildSystemPrompt, splitParentAndTranslation } from '@/lib/prompts'
+import { buildSystemPrompt } from '@/lib/prompts'
 
-const DEFAULT_MODEL = 'gemini-2.5-flash-lite'
-const FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-1.5-flash']
-const MAX_ATTEMPTS = 4
-
-// Tell Vercel to allow up to 30s for this function
 export const maxDuration = 30
+
+const MODEL = 'gpt-4o-mini'
 
 type Message = { role: 'user' | 'model'; text: string }
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
-}
-
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 })
+    return NextResponse.json({ error: 'OPENAI_API_KEY not set' }, { status: 500 })
   }
 
   const { userMessage, history, topic } = (await req.json()) as {
@@ -27,54 +19,68 @@ export async function POST(req: NextRequest) {
     topic: string
   }
 
-  const ai = new GoogleGenAI({ apiKey })
   const systemPrompt = buildSystemPrompt(topic || '日常生活價值觀')
 
-  const contents = [
-    ...history.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
-    { role: 'user' as const, parts: [{ text: userMessage }] },
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((m) => ({
+      role: m.role === 'model' ? 'assistant' : 'user',
+      content: m.text,
+    })),
+    { role: 'user', content: userMessage },
   ]
 
-  const primary = (process.env.GEMINI_MODEL || DEFAULT_MODEL).trim()
-  const candidates = Array.from(new Set([primary, ...FALLBACKS]))
-
-  let lastError = ''
-
-  for (const model of candidates) {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents,
-          config: { systemInstruction: systemPrompt },
-        })
-
-        const raw = (response.text ?? '').trim()
-        const [parent, translation] = splitParentAndTranslation(raw)
-
-        if (!parent) {
-          await sleep(800)
-          continue
-        }
-
-        return NextResponse.json({ parent, translation })
-      } catch (err: unknown) {
-        const e = err as { status?: number; message?: string }
-        const status = e.status ?? 0
-        lastError = String(err)
-
-        if (status === 503 || status === 429) {
-          // exponential backoff: 1s → 2s → 4s
-          await sleep(Math.min(1000 * 2 ** attempt, 6000))
-          continue
-        }
-
-        if (status === 404) break // try next model
-
-        return NextResponse.json({ error: lastError }, { status: status || 500 })
-      }
-    }
+  const body = {
+    model: MODEL,
+    messages,
+    response_format: {
+      type: 'json_schema',
+      json_schema: {
+        name: 'parent_reply',
+        strict: true,
+        schema: {
+          type: 'object',
+          properties: {
+            parent: {
+              type: 'string',
+              description: '家長的回話，繁體中文，80字以內，只說對白',
+            },
+            analysis: {
+              type: 'string',
+              description: '親子溝通分析，繁體中文，80到100字，一個連貫段落',
+            },
+          },
+          required: ['parent', 'analysis'],
+          additionalProperties: false,
+        },
+      },
+    },
   }
 
-  return NextResponse.json({ error: lastError || 'Service unavailable' }, { status: 503 })
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    return NextResponse.json({ error: err }, { status: res.status })
+  }
+
+  const data = await res.json()
+  const content = data.choices?.[0]?.message?.content ?? ''
+
+  try {
+    const parsed = JSON.parse(content)
+    return NextResponse.json({
+      parent: parsed.parent ?? '',
+      translation: parsed.analysis ?? '',
+    })
+  } catch {
+    return NextResponse.json({ error: 'Failed to parse response' }, { status: 500 })
+  }
 }

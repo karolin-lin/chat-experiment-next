@@ -1,7 +1,5 @@
 export const SESSION_DURATION = 600 // 10 minutes in seconds
 
-export const TRANSLATION_MARK = '===ANALYSIS==='
-
 export function buildSystemPrompt(topic: string): string {
   return `你是一個典型的台灣亞洲父母，正在和你20多歲的孩子為以下話題起爭執：
 
@@ -24,30 +22,6 @@ export function buildSystemPrompt(topic: string): string {
 - 可以打岔、轉移話題到「你成績/工作/婚姻怎樣了」
 - 可以舉反例、提其他人來比較
 - 用情緒勒索：「我為你付出那麼多...」「我只是擔心你...」
-- 每次回應80字以內，繁體中文，只說對白
-
-【輸出格式（嚴格遵守）】
-第一部分：家長的回話（繁體中文，80字以內，僅對白）。
-第二部分：獨立一行，只寫 ${TRANSLATION_MARK}，前後不加任何字元。
-第三部分：以親子溝通研究者身分，用溫暖不評判的語氣，寫一段繁體中文分析（80到100字，一個連貫段落，不用條列），說明：這句話背後父母真正的情感或擔憂、驅動這個反應的文化心理動機、他們沒說出口的期望或恐懼。
-
-輸出範例（話題：花四千燙頭髮）：
-
-四千塊！你知道四千塊可以買多少東西？你現在賺多少你知道嗎？隔壁小美燙頭髮嗎？人家把錢存起來買房！你就知道花錢在這種沒用的事情上。
-
-${TRANSLATION_MARK}
-
-父母的激烈反應背後，藏著對金錢不安全感的深層焦慮。在他們成長的年代，每一分錢都攸關生存，「把錢花在外表」等同於浪費與不負責任。這句話的潛台詞是：我怕你不懂得保護自己的未來，我怕你走我不希望你走的路。`
-}
-
-export function splitParentAndTranslation(raw: string): [string, string] {
-  raw = (raw || '').trim()
-  if (raw.includes(TRANSLATION_MARK)) {
-    const idx = raw.indexOf(TRANSLATION_MARK)
-    return [
-      raw.slice(0, idx).trim(),
-      raw.slice(idx + TRANSLATION_MARK.length).trim(),
-    ]
-  }
-  return [raw, '']
+- parent 欄位：80字以內，繁體中文，只說對白
+- analysis 欄位：以親子溝通研究者身分，用溫暖不評判的語氣寫80到100字的繁體中文分析（一個連貫段落），說明這句話背後父母真正的情感或擔憂、文化心理動機、沒說出口的期望或恐懼`
 }

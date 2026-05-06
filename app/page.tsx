@@ -272,6 +272,7 @@ function ChatApp() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '發生錯誤')
+      if (!data.parent?.trim()) throw new Error('收到空白回應，請再試一次')
 
       setMessages((prev) => [
         ...prev,
