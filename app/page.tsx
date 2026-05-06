@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { SESSION_DURATION } from '@/lib/prompts'
 
 type Message = {
@@ -9,6 +10,7 @@ type Message = {
   text: string
   translation?: string
   ts: string
+  contextRevealed?: boolean
 }
 
 function pad(n: number) {
@@ -72,19 +74,31 @@ function TimerBar({ startTime }: { startTime: number }) {
 }
 
 // ── Translation panel ────────────────────────────────────────────
-function TranslationSection({ translation }: { translation: string }) {
+function TranslationSection({
+  translation,
+  onReveal,
+}: {
+  translation: string
+  onReveal: () => void
+}) {
   const [open, setOpen] = useState(false)
   if (!translation) return null
+
+  const handleReveal = () => {
+    setOpen(true)
+    onReveal()
+  }
+
   return (
     <div className="translation-wrap">
       {open ? (
         <div className="translation-panel">
-          <div className="translation-label">話語背後的意思</div>
+          <div className="translation-label">脈絡補充</div>
           {translation}
         </div>
       ) : (
-        <button className="translation-btn" onClick={() => setOpen(true)}>
-          🔍 查看話語背後的意思
+        <button className="translation-btn" onClick={handleReveal}>
+          🔍 查看脈絡補充
         </button>
       )}
     </div>
@@ -108,18 +122,31 @@ function TypingIndicator() {
 }
 
 // ── Participant ID screen ─────────────────────────────────────────
-function ParticipantScreen({ onStart }: { onStart: (id: string) => void }) {
-  const [value, setValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+function ParticipantScreen({
+  onStart,
+  prefillId,
+  prefillTopic,
+}: {
+  onStart: (id: string, topic: string) => void
+  prefillId: string
+  prefillTopic: string
+}) {
+  const [id, setId] = useState(prefillId)
+  const [topic, setTopic] = useState(prefillTopic)
+  const idRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    // If both are prefilled via URL, auto-start
+    if (prefillId && prefillTopic) {
+      onStart(prefillId, prefillTopic)
+      return
+    }
+    idRef.current?.focus()
+  }, [prefillId, prefillTopic, onStart])
 
   const handleSubmit = () => {
-    const id = value.trim()
-    if (!id) return
-    onStart(id)
+    if (!id.trim() || !topic.trim()) return
+    onStart(id.trim(), topic.trim())
   }
 
   return (
@@ -128,28 +155,39 @@ function ParticipantScreen({ onStart }: { onStart: (id: string) => void }) {
         <div className="participant-icon">👨‍👩‍👧</div>
         <h1 className="participant-title">亞洲家長對話實驗</h1>
         <p className="participant-desc">
-          你將與一個模擬台灣父母溝通風格的 AI 進行對話。<br />
-          每次 AI 回覆後，你可以選擇查看話語背後真正的情感。
+          你將與一個模擬台灣父母的 AI 進行價值觀爭論。<br />
+          每次 AI 回覆後，你可以選擇查看脈絡補充。
         </p>
         <div className="participant-form">
-          <label className="participant-label" htmlFor="pid">
-            受試者編號
-          </label>
+          <label className="participant-label" htmlFor="pid">受試者編號</label>
           <input
-            ref={inputRef}
+            ref={idRef}
             id="pid"
             className="participant-input"
             type="text"
-            placeholder="請輸入你的受試者編號"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
+            placeholder="請輸入受試者編號"
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            autoComplete="off"
+          />
+          <label className="participant-label" htmlFor="topic" style={{ marginTop: '0.5rem' }}>
+            爭論話題
+          </label>
+          <input
+            id="topic"
+            className="participant-input"
+            type="text"
+            placeholder="例如：花四千燙頭髮"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoComplete="off"
           />
           <button
             className="participant-btn"
             onClick={handleSubmit}
-            disabled={!value.trim()}
+            disabled={!id.trim() || !topic.trim()}
           >
             開始對話
           </button>
@@ -162,9 +200,14 @@ function ParticipantScreen({ onStart }: { onStart: (id: string) => void }) {
   )
 }
 
-// ── Main page ────────────────────────────────────────────────────
-export default function Page() {
+// ── Inner app (needs useSearchParams) ───────────────────────────
+function ChatApp() {
+  const searchParams = useSearchParams()
+  const urlId = searchParams.get('id') ?? ''
+  const urlTopic = searchParams.get('topic') ?? ''
+
   const [participantId, setParticipantId] = useState<string | null>(null)
+  const [topic, setTopic] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -176,10 +219,11 @@ export default function Page() {
 
   const handleEnd = useCallback(() => setSessionEnded(true), [])
 
-  const handleStart = (id: string) => {
+  const handleStart = useCallback((id: string, t: string) => {
     startTime.current = Date.now()
     setParticipantId(id)
-  }
+    setTopic(t)
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -191,6 +235,13 @@ export default function Page() {
     el.style.height = 'auto'
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }, [input])
+
+  // mark context revealed for a message
+  const handleContextReveal = (msgId: string) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, contextRevealed: true } : m))
+    )
+  }
 
   const send = async () => {
     const text = input.trim()
@@ -217,7 +268,7 @@ export default function Page() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userMessage: text, history }),
+        body: JSON.stringify({ userMessage: text, history, topic }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || '發生錯誤')
@@ -230,6 +281,7 @@ export default function Page() {
           text: data.parent,
           translation: data.translation,
           ts: nowTs(),
+          contextRevealed: false,
         },
       ])
     } catch (e) {
@@ -248,17 +300,19 @@ export default function Page() {
 
   const downloadCSV = () => {
     const rows = [
-      ['participant_id', 'timestamp', 'role', 'content', 'translation'],
+      ['participant_id', 'topic', 'timestamp', 'role', 'content', 'translation', 'context_revealed'],
       ...messages.map((m) => [
         participantId ?? '',
+        topic ?? '',
         m.ts,
         m.role,
         m.text,
         m.translation ?? '',
+        m.role === 'assistant' ? (m.contextRevealed ? '1' : '0') : '',
       ]),
     ]
     const csv = rows
-      .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
       .join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -269,19 +323,25 @@ export default function Page() {
     URL.revokeObjectURL(url)
   }
 
-  // ── Not started yet ───────────────────────────────────────────
-  if (!participantId) {
-    return <ParticipantScreen onStart={handleStart} />
+  if (!participantId || !topic) {
+    return (
+      <ParticipantScreen
+        onStart={handleStart}
+        prefillId={urlId}
+        prefillTopic={urlTopic}
+      />
+    )
   }
 
-  // ── Chat ──────────────────────────────────────────────────────
   return (
     <div className="page">
       <header className="header">
         <div className="header-top">
           <div>
             <div className="header-title">👨‍👩‍👧 亞洲家長對話實驗</div>
-            <div className="header-subtitle">受試者：{participantId}</div>
+            <div className="header-subtitle">
+              受試者：{participantId}　｜　話題：{topic}
+            </div>
           </div>
           <Timer startTime={startTime.current} onEnd={handleEnd} />
         </div>
@@ -294,8 +354,9 @@ export default function Page() {
             <div>
               <div className="empty-icon">💬</div>
               <div className="empty-text">
-                跟家長說點什麼吧<br />
-                不管你說什麼，他都有話要說
+                話題：<strong>{topic}</strong><br /><br />
+                跟家長說說你的想法吧<br />
+                他一定有話要反駁
               </div>
             </div>
           </div>
@@ -309,7 +370,10 @@ export default function Page() {
             </div>
             <div className="bubble-ts">{msg.ts}</div>
             {msg.role === 'assistant' && msg.translation && (
-              <TranslationSection translation={msg.translation} />
+              <TranslationSection
+                translation={msg.translation}
+                onReveal={() => handleContextReveal(msg.id)}
+              />
             )}
           </div>
         ))}
@@ -333,7 +397,7 @@ export default function Page() {
             <textarea
               ref={textareaRef}
               className="input-field"
-              placeholder="說點什麼…（Enter 送出，Shift+Enter 換行）"
+              placeholder="說說你的想法…（Enter 送出，Shift+Enter 換行）"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -354,5 +418,14 @@ export default function Page() {
         </div>
       )}
     </div>
+  )
+}
+
+// ── Page wrapper (Suspense for useSearchParams) ──────────────────
+export default function Page() {
+  return (
+    <Suspense>
+      <ChatApp />
+    </Suspense>
   )
 }

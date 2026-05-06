@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenAI } from '@google/genai'
-import { COMBINED_SYSTEM, splitParentAndTranslation } from '@/lib/prompts'
+import { buildSystemPrompt, splitParentAndTranslation } from '@/lib/prompts'
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite'
 const FALLBACKS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash']
@@ -13,12 +13,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'GEMINI_API_KEY not set' }, { status: 500 })
   }
 
-  const { userMessage, history } = (await req.json()) as {
+  const { userMessage, history, topic } = (await req.json()) as {
     userMessage: string
     history: Message[]
+    topic: string
   }
 
   const ai = new GoogleGenAI({ apiKey })
+  const systemPrompt = buildSystemPrompt(topic || '日常生活價值觀')
 
   const contents = [
     ...history.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
@@ -33,20 +35,16 @@ export async function POST(req: NextRequest) {
       const response = await ai.models.generateContent({
         model,
         contents,
-        config: { systemInstruction: COMBINED_SYSTEM },
+        config: { systemInstruction: systemPrompt },
       })
 
       const raw = response.text ?? ''
       const [parent, translation] = splitParentAndTranslation(raw)
-
       return NextResponse.json({ parent, translation })
     } catch (err: unknown) {
       const status = (err as { status?: number }).status
       if (status === 429 || status === 404) continue
-      return NextResponse.json(
-        { error: String(err) },
-        { status: status ?? 500 }
-      )
+      return NextResponse.json({ error: String(err) }, { status: status ?? 500 })
     }
   }
 
