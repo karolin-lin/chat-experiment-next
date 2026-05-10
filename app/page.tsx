@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SESSION_DURATION, TOPIC_MAP } from '@/lib/prompts'
 
+const SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwmKMxGsD7ZBaVQ4DUeacA0UL8P5bGFDTWGq2KW2KQqqMRKCACO1yjNF6bjeKx1Jb8AAA/exec'
+const QUALTRICS_URL = 'https://tassel.syd1.qualtrics.com/jfe/form/SV_bNFXuzINoN3nM46'
+
 type Message = {
   id: string
   role: 'user' | 'assistant'
@@ -231,7 +234,7 @@ function ParticipantScreen({
           </button>
         </div>
         <p className="participant-note">
-          對話時間為 10 分鐘，結束後可下載對話記錄。
+          對話時間為 10 分鐘，結束後將自動跳轉至後測問卷。
         </p>
       </div>
     </div>
@@ -252,11 +255,78 @@ function ChatApp() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sessionEnded, setSessionEnded] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const startTime = useRef(Date.now())
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const messagesRef = useRef<Message[]>([])
+  const participantIdRef = useRef<string | null>(null)
+  const topicRef = useRef<string | null>(null)
+  const nicknameRef = useRef<string | null>(null)
 
-  const handleEnd = useCallback(() => setSessionEnded(true), [])
+  useEffect(() => { messagesRef.current = messages }, [messages])
+  useEffect(() => { participantIdRef.current = participantId }, [participantId])
+  useEffect(() => { topicRef.current = topic }, [topic])
+  useEffect(() => { nicknameRef.current = nickname }, [nickname])
+
+  const downloadCSV = useCallback((msgs: Message[], pid: string, t: string, nick: string) => {
+    const rows = [
+      ['participant_id', 'topic', 'nickname', 'timestamp', 'role', 'content', 'translation', 'context_revealed'],
+      ...msgs.map((m) => [
+        pid, t, nick, m.ts, m.role, m.text,
+        m.translation ?? '',
+        m.role === 'assistant' ? (m.contextRevealed ? '1' : '0') : '',
+      ]),
+    ]
+    const csv = rows
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${pid}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [])
+
+  const uploadToSheets = useCallback(async (msgs: Message[], pid: string, t: string, nick: string) => {
+    const rows = msgs.map((m) => [
+      pid, t, nick, m.ts, m.role, m.text,
+      m.translation ?? '',
+      m.role === 'assistant' ? (m.contextRevealed ? '1' : '0') : '',
+    ])
+    await fetch(SHEETS_WEBHOOK, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rows),
+    })
+  }, [])
+
+  const handleEnd = useCallback(async () => {
+    setSessionEnded(true)
+    setUploading(true)
+    const msgs = messagesRef.current
+    const pid = participantIdRef.current ?? 'unknown'
+    const t = topicRef.current ?? ''
+    const nick = nicknameRef.current ?? ''
+
+    // 1. 自動下載 CSV
+    downloadCSV(msgs, pid, t, nick)
+
+    // 2. 上傳到 Google Sheets
+    try {
+      await uploadToSheets(msgs, pid, t, nick)
+    } catch {
+      // 上傳失敗不影響跳轉，CSV 已下載
+    }
+
+    setUploading(false)
+
+    // 3. 跳轉到 Qualtrics，帶入 participant_id
+    window.location.href = `${QUALTRICS_URL}?participant_id=${encodeURIComponent(pid)}`
+  }, [downloadCSV, uploadToSheets])
 
   const handleStart = useCallback((id: string, t: string, nick: string, opening: string) => {
     startTime.current = Date.now()
@@ -345,32 +415,6 @@ function ChatApp() {
     }
   }
 
-  const downloadCSV = () => {
-    const rows = [
-      ['participant_id', 'topic', 'nickname', 'timestamp', 'role', 'content', 'translation', 'context_revealed'],
-      ...messages.map((m) => [
-        participantId ?? '',
-        topic ?? '',
-        nickname ?? '',
-        m.ts,
-        m.role,
-        m.text,
-        m.translation ?? '',
-        m.role === 'assistant' ? (m.contextRevealed ? '1' : '0') : '',
-      ]),
-    ]
-    const csv = rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${participantId}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   if (!participantId || !topic || !nickname) {
     return (
       <ParticipantScreen
@@ -386,9 +430,7 @@ function ChatApp() {
       <header className="header">
         <div className="header-top">
           <div>
-            {/* 改成暱稱當標題 */}
             <div className="header-title">{nickname}</div>
-            {/* 只顯示受試者編號 */}
             <div className="header-subtitle">受試者：{participantId}</div>
           </div>
           <Timer startTime={startTime.current} onEnd={handleEnd} />
@@ -397,7 +439,6 @@ function ChatApp() {
       </header>
 
       <div className="chat-area">
-        {/* 脈絡補充說明 hint */}
         <ContextHint nickname={nickname} />
 
         {messages.map((msg) => (
@@ -420,43 +461,34 @@ function ChatApp() {
 
         {loading && <TypingIndicator nickname={nickname} />}
         {error && <div className="error-bar">⚠️ {error}</div>}
+        {uploading && <div className="error-bar">⏳ 正在儲存對話記錄，請稍候...</div>}
         <div ref={bottomRef} />
       </div>
 
-      {sessionEnded ? (
-        <div className="session-ended">
-          <h2>⏰ 對話時間已結束</h2>
-          <p>感謝您參與本實驗，請下載對話記錄交給研究人員。</p>
-          <button className="download-btn" onClick={downloadCSV}>
-            📥 下載對話記錄（{participantId}.csv）
+      <div className="input-area">
+        <div className="input-form">
+          <textarea
+            ref={textareaRef}
+            className="input-field"
+            placeholder="說說你的想法…（Enter 送出，Shift+Enter 換行）"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading || sessionEnded}
+            rows={1}
+          />
+          <button
+            className="send-btn"
+            onClick={send}
+            disabled={!input.trim() || loading || sessionEnded}
+            aria-label="送出"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-1.5-9-1.5V1.5z" />
+            </svg>
           </button>
         </div>
-      ) : (
-        <div className="input-area">
-          <div className="input-form">
-            <textarea
-              ref={textareaRef}
-              className="input-field"
-              placeholder="說說你的想法…（Enter 送出，Shift+Enter 換行）"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={loading}
-              rows={1}
-            />
-            <button
-              className="send-btn"
-              onClick={send}
-              disabled={!input.trim() || loading}
-              aria-label="送出"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-1.5-9-1.5V1.5z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
