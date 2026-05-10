@@ -1,25 +1,57 @@
 export const SESSION_DURATION = 600 // 10 minutes in seconds
 
-export const TOPIC_MAP: Record<string, { topic: string; opening: string }> = {
-  'T001': {
+export const TOPIC_MAP: Record<string, { topic: string; opening: string; condition: 'experimental' | 'control' }> = {
+  // 實驗組（有脈絡補充）
+  'T001E': {
     topic: '生活型態與道德規範：孩子認為有權利選擇自己的生活方式，不需要符合父母期待',
     opening: '最近過得怎樣？吃飯了沒？',
+    condition: 'experimental',
   },
-  'T002': {
+  'T002E': {
     topic: '過度控制與越界：孩子認為交友狀況和日常生活是私事，父母不應過度干涉',
     opening: '最近都在忙什麼？都沒看到你。',
+    condition: 'experimental',
   },
-  'T003': {
+  'T003E': {
     topic: '職涯發展與工作選擇：孩子認為應該追求有熱情的工作，而不是父母覺得穩定的職業',
     opening: '最近工作找得怎麼樣了？',
+    condition: 'experimental',
   },
-  'T004': {
+  'T004E': {
     topic: '傳統人生路徑與社會期待：孩子認為結婚生子不應該是必要選項，想按自己步調決定',
     opening: '最近有沒有在交往啊？',
+    condition: 'experimental',
   },
-  'T005': {
+  'T005E': {
     topic: '權力下放與執行方式：孩子認為已是成年人，在家裡應有平等表達意見的權利',
     opening: '你最近回家都幾點？',
+    condition: 'experimental',
+  },
+  // 控制組（無脈絡補充）
+  'T001C': {
+    topic: '生活型態與道德規範：孩子認為有權利選擇自己的生活方式，不需要符合父母期待',
+    opening: '最近過得怎樣？吃飯了沒？',
+    condition: 'control',
+  },
+  'T002C': {
+    topic: '過度控制與越界：孩子認為交友狀況和日常生活是私事，父母不應過度干涉',
+    opening: '最近都在忙什麼？都沒看到你。',
+    condition: 'control',
+  },
+  'T003C': {
+    topic: '職涯發展與工作選擇：孩子認為應該追求有熱情的工作，而不是父母覺得穩定的職業',
+    opening: '最近工作找得怎麼樣了？',
+    condition: 'control',
+  },
+  'T004C': {
+    topic: '傳統人生路徑與社會期待：孩子認為結婚生子不應該是必要選項，想按自己步調決定',
+    opening: '最近有沒有在交往啊？',
+    condition: 'control',
+  },
+  'T005C': {
+    topic: '權力下放與執行方式：孩子認為已是成年人，在家裡應有平等表達意見的權利',
+    opening: '你最近回家都幾點？',
+    condition: 'control',
   },
 }
 

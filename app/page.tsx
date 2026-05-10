@@ -76,7 +76,7 @@ function TimerBar({ startTime }: { startTime: number }) {
   )
 }
 
-// ── Translation panel ────────────────────────────────────────────
+// ── Translation panel（只有實驗組看得到）────────────────────────
 function TranslationSection({
   translation,
   onReveal,
@@ -124,7 +124,7 @@ function TypingIndicator({ nickname }: { nickname: string }) {
   )
 }
 
-// ── Context hint banner ──────────────────────────────────────────
+// ── Context hint（只有實驗組看得到）─────────────────────────────
 function ContextHint({ nickname }: { nickname: string }) {
   return (
     <div className="context-hint">
@@ -139,7 +139,7 @@ function ParticipantScreen({
   prefillId,
   prefillTopic,
 }: {
-  onStart: (id: string, topic: string, nickname: string, opening: string) => void
+  onStart: (id: string, topic: string, nickname: string, opening: string, condition: 'experimental' | 'control') => void
   prefillId: string
   prefillTopic: string
 }) {
@@ -152,7 +152,7 @@ function ParticipantScreen({
   useEffect(() => {
     if (prefillId && prefillTopic && TOPIC_MAP[prefillTopic]) {
       const entry = TOPIC_MAP[prefillTopic]
-      onStart(prefillId, entry.topic, '', entry.opening)
+      onStart(prefillId, entry.topic, '', entry.opening, entry.condition)
       return
     }
     idRef.current?.focus()
@@ -166,7 +166,7 @@ function ParticipantScreen({
       return
     }
     setCodeError(false)
-    onStart(id.trim(), entry.topic, nickname.trim(), entry.opening)
+    onStart(id.trim(), entry.topic, nickname.trim(), entry.opening, entry.condition)
   }
 
   return (
@@ -176,7 +176,7 @@ function ParticipantScreen({
         <h1 className="participant-title">親子對話實驗</h1>
         <p className="participant-desc">
           你將與一個模擬台灣父母的 AI 進行價值觀爭論。<br />
-          每次 AI 回覆後，你可以選擇查看脈絡補充。
+          請輸入你的受試者資訊以開始對話。
         </p>
         <div className="participant-form">
           <label className="participant-label" htmlFor="pid">受試者編號</label>
@@ -199,7 +199,7 @@ function ParticipantScreen({
             id="code"
             className="participant-input"
             type="text"
-            placeholder="請輸入話題代碼（例如 T001）"
+            placeholder="請輸入話題代碼"
             value={code}
             onChange={(e) => { setCode(e.target.value); setCodeError(false) }}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
@@ -241,7 +241,7 @@ function ParticipantScreen({
   )
 }
 
-// ── Inner app (needs useSearchParams) ───────────────────────────
+// ── Inner app ───────────────────────────────────────────────────
 function ChatApp() {
   const searchParams = useSearchParams()
   const urlId = searchParams.get('id') ?? ''
@@ -250,6 +250,7 @@ function ChatApp() {
   const [participantId, setParticipantId] = useState<string | null>(null)
   const [topic, setTopic] = useState<string | null>(null)
   const [nickname, setNickname] = useState<string | null>(null)
+  const [condition, setCondition] = useState<'experimental' | 'control' | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -263,36 +264,18 @@ function ChatApp() {
   const participantIdRef = useRef<string | null>(null)
   const topicRef = useRef<string | null>(null)
   const nicknameRef = useRef<string | null>(null)
+  const conditionRef = useRef<'experimental' | 'control' | null>(null)
+  const sessionEndedRef = useRef(false)
 
   useEffect(() => { messagesRef.current = messages }, [messages])
   useEffect(() => { participantIdRef.current = participantId }, [participantId])
   useEffect(() => { topicRef.current = topic }, [topic])
   useEffect(() => { nicknameRef.current = nickname }, [nickname])
+  useEffect(() => { conditionRef.current = condition }, [condition])
 
-  const downloadCSV = useCallback((msgs: Message[], pid: string, t: string, nick: string) => {
-    const rows = [
-      ['participant_id', 'topic', 'nickname', 'timestamp', 'role', 'content', 'translation', 'context_revealed'],
-      ...msgs.map((m) => [
-        pid, t, nick, m.ts, m.role, m.text,
-        m.translation ?? '',
-        m.role === 'assistant' ? (m.contextRevealed ? '1' : '0') : '',
-      ]),
-    ]
-    const csv = rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${pid}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [])
-
-  const uploadToSheets = useCallback(async (msgs: Message[], pid: string, t: string, nick: string) => {
+  const uploadToSheets = useCallback(async (msgs: Message[], pid: string, t: string, nick: string, cond: string) => {
     const rows = msgs.map((m) => [
-      pid, t, nick, m.ts, m.role, m.text,
+      pid, t, nick, cond, m.ts, m.role, m.text,
       m.translation ?? '',
       m.role === 'assistant' ? (m.contextRevealed ? '1' : '0') : '',
     ])
@@ -305,34 +288,39 @@ function ChatApp() {
   }, [])
 
   const handleEnd = useCallback(async () => {
+    if (sessionEndedRef.current) return
+    sessionEndedRef.current = true
     setSessionEnded(true)
     setUploading(true)
-    const msgs = messagesRef.current
+
+    const seen = new Set<string>()
+    const msgs = messagesRef.current.filter(m => {
+      if (seen.has(m.id)) return false
+      seen.add(m.id)
+      return true
+    })
+
     const pid = participantIdRef.current ?? 'unknown'
     const t = topicRef.current ?? ''
     const nick = nicknameRef.current ?? ''
+    const cond = conditionRef.current ?? ''
 
-    // 1. 自動下載 CSV
-    downloadCSV(msgs, pid, t, nick)
-
-    // 2. 上傳到 Google Sheets
     try {
-      await uploadToSheets(msgs, pid, t, nick)
+      await uploadToSheets(msgs, pid, t, nick, cond)
     } catch {
-      // 上傳失敗不影響跳轉，CSV 已下載
+      // 上傳失敗不影響跳轉
     }
 
     setUploading(false)
-
-    // 3. 跳轉到 Qualtrics，帶入 participant_id
     window.location.href = `${QUALTRICS_URL}?participant_id=${encodeURIComponent(pid)}`
-  }, [downloadCSV, uploadToSheets])
+  }, [uploadToSheets])
 
-  const handleStart = useCallback((id: string, t: string, nick: string, opening: string) => {
+  const handleStart = useCallback((id: string, t: string, nick: string, opening: string, cond: 'experimental' | 'control') => {
     startTime.current = Date.now()
     setParticipantId(id)
     setTopic(t)
     setNickname(nick)
+    setCondition(cond)
     setMessages([{
       id: crypto.randomUUID(),
       role: 'assistant',
@@ -375,7 +363,7 @@ function ChatApp() {
     setLoading(true)
     setError(null)
 
-    const history = messages.map((m) => ({
+    const history = messagesRef.current.map((m) => ({
       role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
       text: m.text,
     }))
@@ -415,7 +403,9 @@ function ChatApp() {
     }
   }
 
-  if (!participantId || !topic || !nickname) {
+  const isExperimental = condition === 'experimental'
+
+  if (!participantId || !topic || !nickname || !condition) {
     return (
       <ParticipantScreen
         onStart={handleStart}
@@ -439,7 +429,8 @@ function ChatApp() {
       </header>
 
       <div className="chat-area">
-        <ContextHint nickname={nickname} />
+        {/* 只有實驗組看到提示 */}
+        {isExperimental && <ContextHint nickname={nickname} />}
 
         {messages.map((msg) => (
           <div key={msg.id} className={`msg-row ${msg.role}`}>
@@ -450,7 +441,8 @@ function ChatApp() {
               <div className="bubble">{msg.text}</div>
             </div>
             <div className="bubble-ts">{msg.ts}</div>
-            {msg.role === 'assistant' && msg.translation && (
+            {/* 只有實驗組看到脈絡補充按鈕 */}
+            {isExperimental && msg.role === 'assistant' && msg.translation && (
               <TranslationSection
                 translation={msg.translation}
                 onReveal={() => handleContextReveal(msg.id)}
@@ -493,7 +485,6 @@ function ChatApp() {
   )
 }
 
-// ── Page wrapper (Suspense for useSearchParams) ──────────────────
 export default function Page() {
   return (
     <Suspense>
