@@ -5,7 +5,8 @@ import { useSearchParams } from 'next/navigation'
 import { SESSION_DURATION, TOPIC_MAP } from '@/lib/prompts'
 
 const SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwmKMxGsD7ZBaVQ4DUeacA0UL8P5bGFDTWGq2KW2KQqqMRKCACO1yjNF6bjeKx1Jb8AAA/exec'
-const QUALTRICS_URL = 'https://tassel.syd1.qualtrics.com/jfe/form/SV_bNFXuzINoN3nM46'
+const QUALTRICS_URL_EXP = 'https://tassel.syd1.qualtrics.com/jfe/form/SV_bNkhDODhyY8lxbw'
+const QUALTRICS_URL_CTRL = 'https://tassel.syd1.qualtrics.com/jfe/form/SV_0pl4i9CUoJNCcOq'
 
 type Message = {
   id: string
@@ -175,9 +176,13 @@ function ParticipantScreen({
         <div className="participant-icon">👨‍👩‍👧</div>
         <h1 className="participant-title">親子對話實驗</h1>
         <p className="participant-desc">
-          你將與一個模擬台灣父母的 AI 進行價值觀爭論。<br />
-          請輸入你的受試者資訊以開始對話。
-        </p>
+  你將與一個模擬台灣父母的 AI 進行對話。
+</p>
+<div className="participant-instructions">
+  <p>📌 <strong>請注意：</strong></p>
+  <p>請把這次對話當作你真實和父母的對話情境。想像這個話題是你們最近真的有在討論的事情，並盡可能像平常傳訊息一樣，認真表達你的想法。</p>
+  <p>你的每一句話都很重要，將用於分析親子溝通模式。</p>
+</div>
         <div className="participant-form">
           <label className="participant-label" htmlFor="pid">受試者編號</label>
           <input
@@ -303,7 +308,7 @@ function ChatApp() {
     const pid = participantIdRef.current ?? 'unknown'
     const t = topicRef.current ?? ''
     const nick = nicknameRef.current ?? ''
-    const cond = conditionRef.current ?? ''
+    const cond = conditionRef.current ?? 'control'
 
     try {
       await uploadToSheets(msgs, pid, t, nick, cond)
@@ -312,7 +317,10 @@ function ChatApp() {
     }
 
     setUploading(false)
-    window.location.href = `${QUALTRICS_URL}?participant_id=${encodeURIComponent(pid)}`
+
+    // 根據組別跳轉不同的後測問卷
+    const qualtricsUrl = cond === 'experimental' ? QUALTRICS_URL_EXP : QUALTRICS_URL_CTRL
+    window.location.href = `${qualtricsUrl}?participant_id=${encodeURIComponent(pid)}`
   }, [uploadToSheets])
 
   const handleStart = useCallback((id: string, t: string, nick: string, opening: string, cond: 'experimental' | 'control') => {
@@ -397,11 +405,11 @@ function ChatApp() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
-    }
+  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+    e.preventDefault()
+    send()
   }
+}
 
   const isExperimental = condition === 'experimental'
 
@@ -429,7 +437,6 @@ function ChatApp() {
       </header>
 
       <div className="chat-area">
-        {/* 只有實驗組看到提示 */}
         {isExperimental && <ContextHint nickname={nickname} />}
 
         {messages.map((msg) => (
@@ -441,7 +448,6 @@ function ChatApp() {
               <div className="bubble">{msg.text}</div>
             </div>
             <div className="bubble-ts">{msg.ts}</div>
-            {/* 只有實驗組看到脈絡補充按鈕 */}
             {isExperimental && msg.role === 'assistant' && msg.translation && (
               <TranslationSection
                 translation={msg.translation}
