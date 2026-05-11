@@ -651,13 +651,6 @@ function ChatApp() {
             </svg>
           </button>
         </div>
-        <button
-          style={{ marginTop: '0.5rem', padding: '0.25rem 1rem', fontSize: '0.75rem', opacity: 0.5 }}
-          onClick={handleEnd}
-          disabled={sessionEnded}
-        >
-          [測試用] 結束對話
-        </button>
       </div>
     </div>
   )
