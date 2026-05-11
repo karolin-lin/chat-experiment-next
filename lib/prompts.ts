@@ -1,57 +1,100 @@
 export const SESSION_DURATION = 600 // 10 minutes in seconds
 
-export const TOPIC_MAP: Record<string, { topic: string; opening: string; condition: 'experimental' | 'control' }> = {
+export const PARTICIPANT_MAP: Record<string, string> = {
+  '1': 'T003C',
+  '2': 'T003E',
+  '3': 'T005E',
+  '4': 'T002C',
+  '5': 'T003E',
+  '6': 'T001C',
+  '7': 'T002C',
+  '8': 'T001E',
+  '9': 'T003C',
+  '10': 'T004E',
+  '11': 'T003C',
+  '12': 'T001C',
+  '13': 'T002E',
+  '14': 'T004E',
+  '15': 'T005C',
+  '16': 'T002C',
+  '17': 'T002E',
+  '18': 'T005C',
+  '19': 'T004E',
+  '20': 'T004C',
+  '21': 'T005E',
+  '22': 'T001E',
+  '23': 'T002E',
+  '24': 'T003E',
+  '25': 'T001C',
+  '26': 'T004C',
+  '27': 'T001E',
+  '28': 'T004C',
+  '29': 'T002C',
+  '30': 'T002E',
+}
+
+export const TOPIC_MAP: Record<string, { topic: string; opening: string; condition: 'experimental' | 'control'; pretestQuestion: string }> = {
   // 實驗組（有脈絡補充）
   'T001E': {
     topic: '生活型態與道德規範：孩子認為有權利選擇自己的生活方式，不需要符合父母期待',
     opening: '最近過得怎樣？吃飯了沒？',
     condition: 'experimental',
+    pretestQuestion: '你覺得長輩為什麼不認同你自己決定外貌、作息和交友的權利？請用自己的話說明。',
   },
   'T002E': {
     topic: '過度控制與越界：孩子認為交友狀況和日常生活是私事，父母不應過度干涉',
     opening: '最近都在忙什麼？都沒看到你。',
     condition: 'experimental',
+    pretestQuestion: '你覺得長輩為什麼不認同你認為他們不應該干涉你的個人決定或查看你的私人訊息？請用自己的話說明。',
   },
   'T003E': {
     topic: '職涯發展與工作選擇：孩子認為應該追求有熱情的工作，而不是父母覺得穩定的職業',
     opening: '最近工作找得怎麼樣了？',
     condition: 'experimental',
+    pretestQuestion: '你覺得長輩為什麼不認同你選擇有熱情的工作，而不是他們認為穩定的職業？請用自己的話說明。',
   },
   'T004E': {
     topic: '傳統人生路徑與社會期待：孩子認為結婚生子不應該是必要選項，想按自己步調決定',
     opening: '最近有沒有在交往啊？',
     condition: 'experimental',
+    pretestQuestion: '你覺得長輩為什麼不認同你認為結婚、生子、買房不應該是必須完成的任務？請用自己的話說明。',
   },
   'T005E': {
     topic: '權力下放與執行方式：孩子認為已是成年人，在家裡應有平等表達意見的權利',
     opening: '你最近回家都幾點？',
     condition: 'experimental',
+    pretestQuestion: '你覺得長輩為什麼不認同你認為在家務分工或金錢管理上，你的方式應該被尊重？請用自己的話說明。',
   },
   // 控制組（無脈絡補充）
   'T001C': {
     topic: '生活型態與道德規範：孩子認為有權利選擇自己的生活方式，不需要符合父母期待',
     opening: '最近過得怎樣？吃飯了沒？',
     condition: 'control',
+    pretestQuestion: '你覺得長輩為什麼不認同你自己決定外貌、作息和交友的權利？請用自己的話說明。',
   },
   'T002C': {
     topic: '過度控制與越界：孩子認為交友狀況和日常生活是私事，父母不應過度干涉',
     opening: '最近都在忙什麼？都沒看到你。',
     condition: 'control',
+    pretestQuestion: '你覺得長輩為什麼不認同你認為他們不應該干涉你的個人決定或查看你的私人訊息？請用自己的話說明。',
   },
   'T003C': {
     topic: '職涯發展與工作選擇：孩子認為應該追求有熱情的工作，而不是父母覺得穩定的職業',
     opening: '最近工作找得怎麼樣了？',
     condition: 'control',
+    pretestQuestion: '你覺得長輩為什麼不認同你選擇有熱情的工作，而不是他們認為穩定的職業？請用自己的話說明。',
   },
   'T004C': {
     topic: '傳統人生路徑與社會期待：孩子認為結婚生子不應該是必要選項，想按自己步調決定',
     opening: '最近有沒有在交往啊？',
     condition: 'control',
+    pretestQuestion: '你覺得長輩為什麼不認同你認為結婚、生子、買房不應該是必須完成的任務？請用自己的話說明。',
   },
   'T005C': {
     topic: '權力下放與執行方式：孩子認為已是成年人，在家裡應有平等表達意見的權利',
     opening: '你最近回家都幾點？',
     condition: 'control',
+    pretestQuestion: '你覺得長輩為什麼不認同你認為在家務分工或金錢管理上，你的方式應該被尊重？請用自己的話說明。',
   },
 }
 
