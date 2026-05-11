@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { SESSION_DURATION, TOPIC_MAP, PARTICIPANT_MAP } from '@/lib/prompts'
 
-const SHEETS_WEBHOOK = 'https://script.google.com/macros/s/AKfycbwmKMxGsD7ZBaVQ4DUeacA0UL8P5bGFDTWGq2KW2KQqqMRKCACO1yjNF6bjeKx1Jb8AAA/exec'
 const QUALTRICS_URL_EXP = 'https://tassel.syd1.qualtrics.com/jfe/form/SV_bNkhDODhyY8lxbw'
 const QUALTRICS_URL_CTRL = 'https://tassel.syd1.qualtrics.com/jfe/form/SV_0pl4i9CUoJNCcOq'
 const COOLDOWN_DURATION = 120 // 2 minutes
@@ -27,7 +26,6 @@ function nowTs() {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-// ── Timer ────────────────────────────────────────────────────────
 function Timer({ startTime, onEnd }: { startTime: number; onEnd: () => void }) {
   const [remaining, setRemaining] = useState(SESSION_DURATION)
 
@@ -78,7 +76,6 @@ function TimerBar({ startTime }: { startTime: number }) {
   )
 }
 
-// ── Translation panel ────────────────────────────────────────────
 function TranslationSection({
   translation,
   onReveal,
@@ -110,7 +107,6 @@ function TranslationSection({
   )
 }
 
-// ── Typing indicator ─────────────────────────────────────────────
 function TypingIndicator({ nickname }: { nickname: string }) {
   return (
     <div className="msg-row assistant">
@@ -126,7 +122,6 @@ function TypingIndicator({ nickname }: { nickname: string }) {
   )
 }
 
-// ── Context hint ─────────────────────────────────────────────────
 function ContextHint({ nickname }: { nickname: string }) {
   return (
     <div className="context-hint">
@@ -135,7 +130,6 @@ function ContextHint({ nickname }: { nickname: string }) {
   )
 }
 
-// ── Step 1: Participant info screen ──────────────────────────────
 function ParticipantScreen({
   onNext,
   prefillId,
@@ -241,7 +235,6 @@ function ParticipantScreen({
   )
 }
 
-// ── Step 2: Pretest question screen ──────────────────────────────
 function PretestScreen({
   pretestQuestion,
   onSubmit,
@@ -279,24 +272,26 @@ function PretestScreen({
   )
 }
 
-// ── Step 4: Cooldown screen ───────────────────────────────────────
 function CooldownScreen({ onEnd }: { onEnd: () => void }) {
   const [remaining, setRemaining] = useState(COOLDOWN_DURATION)
+  const onEndRef = useRef(onEnd)
+  onEndRef.current = onEnd
 
   useEffect(() => {
     const id = setInterval(() => {
       setRemaining(prev => {
         if (prev <= 1) {
           clearInterval(id)
-          onEnd()
+          setTimeout(() => onEndRef.current(), 0)  // 改這行
           return 0
         }
         return prev - 1
       })
     }, 1000)
     return () => clearInterval(id)
-  }, [onEnd])
+  }, [])  // 移除 onEnd 依賴
 
+  // ... 其餘不變
   const pct = (remaining / COOLDOWN_DURATION) * 100
 
   return (
@@ -321,7 +316,6 @@ function CooldownScreen({ onEnd }: { onEnd: () => void }) {
   )
 }
 
-// ── Step 5: Posttest question screen ─────────────────────────────
 function PosttestScreen({
   pretestQuestion,
   onSubmit,
@@ -360,21 +354,18 @@ function PosttestScreen({
   )
 }
 
-// ── Inner app ───────────────────────────────────────────────────
 function ChatApp() {
   const searchParams = useSearchParams()
   const urlId = searchParams.get('id') ?? ''
   const urlTopic = searchParams.get('topic') ?? ''
 
   const [step, setStep] = useState<'info' | 'pretest' | 'chat' | 'cooldown' | 'posttest'>('info')
-
   const [participantId, setParticipantId] = useState<string | null>(null)
   const [topic, setTopic] = useState<string | null>(null)
   const [nickname, setNickname] = useState<string | null>(null)
   const [condition, setCondition] = useState<'experimental' | 'control' | null>(null)
   const [pretestQuestion, setPretestQuestion] = useState<string>('')
   const [opening, setOpening] = useState<string>('')
-
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -398,11 +389,11 @@ function ChatApp() {
   useEffect(() => { nicknameRef.current = nickname }, [nickname])
   useEffect(() => { conditionRef.current = condition }, [condition])
 
-  // 移除 Content-Type header，no-cors 模式下不允許 application/json
+  // 透過 Next.js API route 上傳，避免 CORS 問題
   const postToSheets = useCallback(async (data: object) => {
-    await fetch(SHEETS_WEBHOOK, {
+    await fetch('/api/save', {
       method: 'POST',
-      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
   }, [])
@@ -418,20 +409,29 @@ function ChatApp() {
   }, [])
 
   const handlePretestSubmit = useCallback(async (answer: string) => {
-    const pid = participantId ?? 'unknown'
-    const t = topic ?? ''
-    const cond = condition ?? 'control'
+  console.log('pretest submit:', answer)  // 加這行
+  const pid = participantId ?? 'unknown'
+  const t = topic ?? ''
+  const cond = condition ?? 'control'
 
-    try {
-      await postToSheets({
+  try {
+    const res = await fetch('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         type: 'pretest',
         participant_id: pid,
         topic: t,
         condition: cond,
         pretest_answer: answer,
         timestamp: nowTs(),
-      })
-    } catch { /* 上傳失敗不影響繼續 */ }
+      }),
+    })
+    console.log('api/save response:', res.status)  // 加這行
+  } catch (err) {
+    console.error('upload error:', err)  // 加這行
+  }
+  // ...
 
     startTime.current = Date.now()
     setMessages([{
@@ -473,11 +473,11 @@ function ChatApp() {
     } catch { /* 上傳失敗不影響繼續 */ }
 
     setUploading(false)
-    setStep('cooldown')
+    setStep('cooldown' as const)
   }, [postToSheets])
 
   const handleCooldownEnd = useCallback(() => {
-    setStep('posttest')
+    setStep('posttest' as const)
   }, [])
 
   const handlePosttestSubmit = useCallback(async (answer: string) => {
@@ -651,15 +651,13 @@ function ChatApp() {
             </svg>
           </button>
         </div>
-        {process.env.NODE_ENV === 'development' && (
-          <button
-            style={{ marginTop: '0.5rem', padding: '0.25rem 1rem', fontSize: '0.75rem', opacity: 0.5 }}
-            onClick={handleEnd}
-            disabled={sessionEnded}
-          >
-            [測試用] 結束對話
-          </button>
-        )}
+        <button
+          style={{ marginTop: '0.5rem', padding: '0.25rem 1rem', fontSize: '0.75rem', opacity: 0.5 }}
+          onClick={handleEnd}
+          disabled={sessionEnded}
+        >
+          [測試用] 結束對話
+        </button>
       </div>
     </div>
   )
