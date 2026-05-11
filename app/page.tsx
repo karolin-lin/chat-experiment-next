@@ -197,9 +197,7 @@ function ParticipantScreen({
             placeholder="請輸入受試者編號"
             value={id}
             onChange={(e) => setId(e.target.value)}
-            onKeyDown={(e) => {
-  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit()
-}}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit() }}
             autoComplete="off"
           />
           <label className="participant-label" htmlFor="code" style={{ marginTop: '0.5rem' }}>話題代碼</label>
@@ -210,9 +208,7 @@ function ParticipantScreen({
             placeholder="請輸入話題代碼"
             value={code}
             onChange={(e) => { setCode(e.target.value); setCodeError(false) }}
-            onKeyDown={(e) => {
-  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit()
-}}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit() }}
             autoComplete="off"
           />
           {codeError && (
@@ -228,9 +224,7 @@ function ParticipantScreen({
             placeholder="例如：媽媽、老爸、阿母"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            onKeyDown={(e) => {
-  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit()
-}}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit() }}
             autoComplete="off"
           />
           <button
@@ -310,9 +304,7 @@ function CooldownScreen({ onEnd }: { onEnd: () => void }) {
       <div className="participant-card">
         <div className="participant-icon">☕</div>
         <h1 className="participant-title">感謝你完成這次對話</h1>
-        <p className="participant-desc">
-          請先休息一下，稍後將有一個簡短的問題請你回答。
-        </p>
+        <p className="participant-desc">請先休息一下，稍後將有一個簡短的問題請你回答。</p>
         <div style={{ margin: '1.5rem 0', textAlign: 'center' }}>
           <div style={{ fontSize: '2.5rem', fontWeight: 600, letterSpacing: '0.05em' }}>
             {pad(Math.floor(remaining / 60))}:{pad(remaining % 60)}
@@ -338,8 +330,6 @@ function PosttestScreen({
   onSubmit: (answer: string) => void
 }) {
   const [answer, setAnswer] = useState('')
-
-  // 把前測問題的「為什麼」部分保留，改成現在式
   const posttestQuestion = pretestQuestion.replace('你覺得', '現在你覺得')
 
   return (
@@ -408,16 +398,15 @@ function ChatApp() {
   useEffect(() => { nicknameRef.current = nickname }, [nickname])
   useEffect(() => { conditionRef.current = condition }, [condition])
 
+  // 移除 Content-Type header，no-cors 模式下不允許 application/json
   const postToSheets = useCallback(async (data: object) => {
     await fetch(SHEETS_WEBHOOK, {
       method: 'POST',
       mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
   }, [])
 
-  // Step 1 → Step 2
   const handleInfoNext = useCallback((id: string, t: string, nick: string, op: string, cond: 'experimental' | 'control', pq: string) => {
     setParticipantId(id)
     setTopic(t)
@@ -428,7 +417,6 @@ function ChatApp() {
     setStep('pretest')
   }, [])
 
-  // Step 2 → Step 3
   const handlePretestSubmit = useCallback(async (answer: string) => {
     const pid = participantId ?? 'unknown'
     const t = topic ?? ''
@@ -456,7 +444,6 @@ function ChatApp() {
     setStep('chat')
   }, [participantId, topic, condition, opening, postToSheets])
 
-  // Step 3 → Step 4（對話結束，上傳對話記錄，進入 cooldown）
   const handleEnd = useCallback(async () => {
     if (sessionEndedRef.current) return
     sessionEndedRef.current = true
@@ -489,12 +476,10 @@ function ChatApp() {
     setStep('cooldown')
   }, [postToSheets])
 
-  // Step 4 → Step 5
   const handleCooldownEnd = useCallback(() => {
     setStep('posttest')
   }, [])
 
-  // Step 5 → 跳轉 Qualtrics
   const handlePosttestSubmit = useCallback(async (answer: string) => {
     const pid = participantIdRef.current ?? 'unknown'
     const t = topicRef.current ?? ''
@@ -593,20 +578,16 @@ function ChatApp() {
   if (step === 'info') return (
     <ParticipantScreen onNext={handleInfoNext} prefillId={urlId} prefillTopic={urlTopic} />
   )
-
   if (step === 'pretest') return (
     <PretestScreen pretestQuestion={pretestQuestion} onSubmit={handlePretestSubmit} />
   )
-
   if (step === 'cooldown') return (
     <CooldownScreen onEnd={handleCooldownEnd} />
   )
-
   if (step === 'posttest') return (
     <PosttestScreen pretestQuestion={pretestQuestion} onSubmit={handlePosttestSubmit} />
   )
 
-  // step === 'chat'
   return (
     <div className="page">
       <header className="header">
@@ -670,6 +651,15 @@ function ChatApp() {
             </svg>
           </button>
         </div>
+        {process.env.NODE_ENV === 'development' && (
+          <button
+            style={{ marginTop: '0.5rem', padding: '0.25rem 1rem', fontSize: '0.75rem', opacity: 0.5 }}
+            onClick={handleEnd}
+            disabled={sessionEnded}
+          >
+            [測試用] 結束對話
+          </button>
+        )}
       </div>
     </div>
   )
