@@ -197,7 +197,9 @@ function ParticipantScreen({
             placeholder="請輸入受試者編號"
             value={id}
             onChange={(e) => setId(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            onKeyDown={(e) => {
+  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit()
+}}
             autoComplete="off"
           />
           <label className="participant-label" htmlFor="code" style={{ marginTop: '0.5rem' }}>話題代碼</label>
@@ -208,7 +210,9 @@ function ParticipantScreen({
             placeholder="請輸入話題代碼"
             value={code}
             onChange={(e) => { setCode(e.target.value); setCodeError(false) }}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            onKeyDown={(e) => {
+  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit()
+}}
             autoComplete="off"
           />
           {codeError && (
@@ -224,7 +228,9 @@ function ParticipantScreen({
             placeholder="例如：媽媽、老爸、阿母"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            onKeyDown={(e) => {
+  if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSubmit()
+}}
             autoComplete="off"
           />
           <button
