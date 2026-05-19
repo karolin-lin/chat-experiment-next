@@ -32,6 +32,8 @@ export const PARTICIPANT_MAP: Record<string, string> = {
   '29': 'T002C',
   '30': 'T002E',
   '31': 'T003C',
+  '32': 'T003E',
+  '33': 'T001C',
 }
 
 export const TOPIC_MAP: Record<string, { topic: string; opening: string; condition: 'experimental' | 'control'; pretestQuestion: string }> = {
